@@ -46,9 +46,10 @@ function encode(rv,      // @param ByteArray: result
                 mix,     // @param Mix: source data
                 depth) { // @param Number: depth
     var size, i, iz, c, pos,        // for UTF8.encode, Array.encode, Hash.encode
-        high, low, sign, exp, frac; // for IEEE754
+        high, low, sign, exp, frac, // for IEEE754
+        bs = 16384;                 // for .push.apply
 
-    if (mix == null) { // null or undefined -> 0xc0 ( null )
+    if (mix === null) { // null -> 0xc0 ( nil )
         rv.push(0xc0);
     } else if (mix === undefined) { // undefined -> 0xc1 ( reserved )
         rv.push(0xc1);
@@ -59,11 +60,11 @@ function encode(rv,      // @param ByteArray: result
     } else {
         switch (typeof mix) {
         case "number":
-            if (mix !== mix) { // isNaN
-                rv.push(0xcb, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff); // quiet NaN
-            } else if (mix === Infinity) {
-                rv.push(0xcb, 0x7f, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00); // positive infinity
-            } else if (mix % 1) { // double
+            if (isNaN(mix)) { // NaN
+                rv.push(0xca, 0x7f, 0xc0, 0x00, 0x00);
+            } else if (!isFinite(mix)) { // ±Infinity
+                rv.push(0xca, mix > 0 ? 0x7f : 0xff, 0x80, 0x00, 0x00);
+            } else if (mix % 1 || mix > 0x1fffffffffffff || mix < -0x1fffffffffffff) { // double
                 // THX!! @edvakf
                 // http://javascript.g.hatena.ne.jp/edvakf/20101128/1291000731
                 sign = mix < 0;
@@ -98,45 +99,35 @@ function encode(rv,      // @param ByteArray: result
                               (low  >> 24) & 0xff, (low  >> 16) & 0xff,
                               (low  >>  8) & 0xff,  low         & 0xff);
             } else { // int or uint
-                if (mix < 0) {
-                    // int
+                if (mix >= 0x100000000 || mix < -0x80000000) { // int64
+                    high = Math.floor(mix / 0x100000000);
+                    low  = mix | 0;
+                    rv.push(0xd3, (high >> 24) & 0xff, (high >> 16) & 0xff,
+                                  (high >>  8) & 0xff,         high & 0xff,
+                                  (low  >> 24) & 0xff, (low  >> 16) & 0xff,
+                                  (low  >>  8) & 0xff,          low & 0xff);
+                } else if (mix < 0) { // int
                     if (mix >= -32) { // negative fixnum
-                        rv.push(0xe0 + mix + 32);
-                    } else if (mix > -0x80) {
-                        rv.push(0xd0, mix + 0x100);
-                    } else if (mix > -0x8000) {
-                        mix += 0x10000;
-                        rv.push(0xd1, mix >> 8, mix & 0xff);
-                    } else if (mix > -0x80000000) {
-                        mix += 0x100000000;
-                        rv.push(0xd2, mix >>> 24, (mix >> 16) & 0xff,
-                                                  (mix >>  8) & 0xff, mix & 0xff);
-                    } else {
-                        high = Math.floor(mix / 0x100000000);
-                        low  = mix & 0xffffffff;
-                        rv.push(0xd3, (high >> 24) & 0xff, (high >> 16) & 0xff,
-                                      (high >>  8) & 0xff,         high & 0xff,
-                                      (low  >> 24) & 0xff, (low  >> 16) & 0xff,
-                                      (low  >>  8) & 0xff,          low & 0xff);
+                        rv.push(0xe0 | (mix & 0x1f));
+                    } else if (mix >= -0x80) { // int8
+                        rv.push(0xd0, mix & 0xff);
+                    } else if (mix >= -0x8000) { // int16
+                        rv.push(0xd1, (mix >> 8) & 0xff, mix & 0xff);
+                    } else { // int32
+                        rv.push(0xd2, (mix >> 24) & 0xff,
+                                      (mix >> 16) & 0xff,
+                                      (mix >>  8) & 0xff, mix & 0xff);
                     }
-                } else {
-                    // uint
+                } else { // uint
                     if (mix < 0x80) {
                         rv.push(mix); // positive fixnum
                     } else if (mix < 0x100) { // uint 8
                         rv.push(0xcc, mix);
                     } else if (mix < 0x10000) { // uint 16
                         rv.push(0xcd, mix >> 8, mix & 0xff);
-                    } else if (mix < 0x100000000) { // uint 32
-                        rv.push(0xce, mix >>> 24, (mix >> 16) & 0xff,
-                                                  (mix >>  8) & 0xff, mix & 0xff);
-                    } else {
-                        high = Math.floor(mix / 0x100000000);
-                        low  = mix & 0xffffffff;
-                        rv.push(0xcf, (high >> 24) & 0xff, (high >> 16) & 0xff,
-                                      (high >>  8) & 0xff,         high & 0xff,
-                                      (low  >> 24) & 0xff, (low  >> 16) & 0xff,
-                                      (low  >>  8) & 0xff,          low & 0xff);
+                    } else { // uint 32
+                        rv.push(0xce, mix >> 24, (mix >> 16) & 0xff,
+                                                 (mix >>  8) & 0xff, mix & 0xff);
                     }
                 }
             }

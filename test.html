@@ -1,0 +1,222 @@
+<!doctype html>
+<html>
+    <head>
+        <meta charset="UTF-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/jasmine/2.3.4/jasmine.css">
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/jasmine/2.3.4/jasmine.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/jasmine/2.3.4/jasmine-html.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/jasmine/2.3.4/boot.js"></script>
+    </head>
+    <body>
+        <script src="msgpack.js"></script>
+        <script>
+            function s2b ( s ) {
+                var b = new Uint8Array(s.length);
+                for ( var i = 0; i < s.length; i++ ) b[i] = s.charCodeAt(i);
+                return b;
+            }
+
+            function b2s ( b ) {
+                if ( b instanceof ArrayBuffer ) b = new Uint8Array(b);
+                return String.fromCharCode.apply( String, b );
+            }
+
+            function x2b ( s ) {
+                if ( s.length % 2 ) s = '0'+s;
+                var b = new Uint8Array(s.length/2);
+                for ( var i = 0; i < s.length; i += 2 ) {
+                    b[i>>1] = parseInt( s.substr(i,2), 16 );
+                }
+                return b;
+            }
+
+            function b2x ( ab ) {
+                var b = new Uint8Array(ab), s = '';
+                for ( var i = 0; i < b.length; i++ ) {
+                    var h = b[i].toString(16);
+                    if ( h.length < 2 ) s += '0';
+                    s += h;
+                }
+                return s;
+            }
+
+            describe( 'Util', function () {
+                it( 's2b', function () {
+                    expect( s2b('') ).toEqual( new Uint8Array() );
+                    expect( s2b('a') ).toEqual( new Uint8Array([97]) );
+                    expect( s2b( unescape( encodeURIComponent("\uD83D\uDE80") ) ) ).toEqual( new Uint8Array([0xF0,0x9F,0x9A,0x80]) ); // Unicode ROCKET
+                });
+
+                it( 'b2s', function () {
+                    expect( b2s( new Uint8Array() ) ).toBe('');
+                    expect( b2s( new Uint8Array([97]) ) ).toBe('a');
+                    expect( decodeURIComponent( escape( b2s( new Uint8Array([0xF0,0x9F,0x9A,0x80]) ) ) ) ).toBe("\uD83D\uDE80"); // Unicode ROCKET
+                });
+
+                it( 'x2b', function () {
+                    expect( x2b('') ).toEqual( new Uint8Array() );
+                    expect( x2b('0') ).toEqual( new Uint8Array(1) );
+                    expect( x2b('10203') ).toEqual( new Uint8Array([1,2,3]) );
+                });
+
+                it( 'b2x', function () {
+                    expect( b2x( new ArrayBuffer() ) ).toBe( '' );
+                    expect( b2x( new Uint8Array(1) ) ).toBe( '00' );
+                    expect( b2x( new Uint8Array([1,2,3]) ) ).toBe( '010203' );
+                });
+            });
+
+            describe( 'MessagePack', function () {
+                describe( 'pack', function () {
+                    it( 'null', function () {
+                        expect( b2x( msgpack.pack(null) ) ).toBe('c0');
+                    });
+
+                    it( 'undefined', function () {
+                        expect( b2x( msgpack.pack(undefined) ) ).toBe('c1');
+                    });
+
+                    it( 'boolean', function () {
+                        expect( b2x( msgpack.pack(false) ) ).toBe('c2');
+                        expect( b2x( msgpack.pack(true) ) ).toBe('c3');
+                    });
+
+                    it( 'positive fixint', function () {
+                        expect( b2x( msgpack.pack(0) ) ).toBe('00');
+                        expect( b2x( msgpack.pack(127) ) ).toBe('7f');
+                    });
+
+                    it( 'negative fixint', function () {
+                        expect( b2x( msgpack.pack(-1) ) ).toBe('ff');
+                        expect( b2x( msgpack.pack(-32) ) ).toBe('e0');
+                    });
+
+                    it( 'uint8', function () {
+                        expect( b2x( msgpack.pack(128) ) ).toBe('cc80');
+                        expect( b2x( msgpack.pack(255) ) ).toBe('ccff');
+                    });
+
+                    it( 'uint16', function () {
+                        expect( b2x( msgpack.pack(256) ) ).toBe('cd0100');
+                        expect( b2x( msgpack.pack(65535) ) ).toBe('cdffff');
+                    });
+
+                    it( 'uint32', function () {
+                        expect( b2x( msgpack.pack(65536) ) ).toBe('ce00010000');
+                        expect( b2x( msgpack.pack(0xffffffff) ) ).toBe('ceffffffff');
+                    });
+
+                    it( 'int8', function () {
+                        expect( b2x( msgpack.pack(-33) ) ).toBe('d0df');
+                        expect( b2x( msgpack.pack(-128) ) ).toBe('d080');
+                    });
+
+                    it( 'int16', function () {
+                        expect( b2x( msgpack.pack(-129) ) ).toBe('d1ff7f');
+                        expect( b2x( msgpack.pack(-32768) ) ).toBe('d18000');
+                    });
+
+                    it( 'int32', function () {
+                        expect( b2x( msgpack.pack(65536) ) ).toBe('ce00010000');
+                        expect( b2x( msgpack.pack(0xffffffff) ) ).toBe('ceffffffff');
+                    });
+
+                    it( 'int64', function () {
+                        expect( b2x( msgpack.pack(0x100000000) ) ).toBe('d30000000100000000');
+                        expect( b2x( msgpack.pack(0x1fffffffffffff) ) ).toBe('d3001fffffffffffff'); // MAX_SAFE_INTEGER
+                        expect( b2x( msgpack.pack(-0x1fffffffffffff) ) ).toBe('d3ffe0000000000001'); // MIN_SAFE_INTEGER
+                    });
+
+                    it( 'float32', function () {
+                        expect( b2x( msgpack.pack(NaN) ) ).toBe('ca7fc00000');
+                        expect( b2x( msgpack.pack(Infinity) ) ).toBe('ca7f800000');
+                        expect( b2x( msgpack.pack(-Infinity) ) ).toBe('caff800000');
+                        expect( b2x( msgpack.pack(1.5) ) ).toBe('ca3fc00000');
+                        expect( b2x( msgpack.pack(-1.5) ) ).toBe('cabfc00000');
+                        expect( b2x( msgpack.pack(3.4028234663852886e+38) ) ).toBe('ca7f7fffff');
+                        expect( b2x( msgpack.pack(-3.4028234663852886e+38) ) ).toBe('caff7fffff');
+                    });
+
+                    it( 'float64', function () {
+                        expect( b2x( msgpack.pack(Math.LN10) ) ).toBe('cb40026bb1bbb55516');
+                        expect( b2x( msgpack.pack(Math.LN2) ) ).toBe('cb3fe62e42fefa39ef');
+                        expect( b2x( msgpack.pack(Math.PI) ) ).toBe('cb400921fb54442d18');
+                        expect( b2x( msgpack.pack(Math.E) ) ).toBe('cb4005bf0a8b145769');
+                    });
+
+                    it( 'fixstr', function () {
+                        expect( b2x( msgpack.pack("") ) ).toBe('a0');
+                        expect( b2x( msgpack.pack("\x00") ) ).toBe('a100');
+                        expect( b2x( msgpack.pack("~") ) ).toBe('a17e');
+                        expect( b2x( msgpack.pack("\u00a7") ) ).toBe('a2c2a7'); // §
+                        expect( b2x( msgpack.pack("\u2665") ) ).toBe('a3e299a5'); // ♥
+                        expect( b2x( msgpack.pack("\uD83D\uDE80") ) ).toBe('a4f09f9a80'); // 🚀
+                    });
+
+                    it( 'str8', function () {
+                        expect( b2x( msgpack.pack( b2s( new ArrayBuffer(32) ) ) ) ).toMatch(/^d920[0]+$/);
+                        expect( b2x( msgpack.pack( b2s( new ArrayBuffer(255) ) ) ) ).toMatch(/^d9ff[0]+$/);
+                    });
+
+                    it( 'str16', function () {
+                        expect( b2x( msgpack.pack( b2s( new ArrayBuffer(256) ) ) ) ).toMatch(/^da0100[0]+$/);
+                        expect( b2x( msgpack.pack( b2s( new ArrayBuffer(65535) ) ) ) ).toMatch(/^daffff[0]+$/);
+                    });
+
+                    it( 'str32', function () {
+                        expect( b2x( msgpack.pack( b2s( new ArrayBuffer(65536) ) ) ) ).toMatch(/^db00010000[0]+$/);
+                    });
+
+                    it( 'bin8', function () {
+                        expect( b2x( msgpack.pack( new ArrayBuffer(0) ) ) ).toBe('c400');
+                        expect( b2x( msgpack.pack( new ArrayBuffer(1) ) ) ).toBe('c40100');
+                        expect( b2x( msgpack.pack( new ArrayBuffer(255) ) ) ).toMatch(/^c4ff[0]+$/);
+                    });
+
+                    it( 'bin16', function () {
+                        expect( b2x( msgpack.pack( new ArrayBuffer(256) ) ) ).toMatch(/^c50100[0]+$/);
+                        expect( b2x( msgpack.pack( new ArrayBuffer(65535) ) ) ).toMatch(/^c5ffff[0]+$/);
+                    });
+
+                    it( 'bin32', function () {
+                        expect( b2x( msgpack.pack( new ArrayBuffer(65536) ) ) ).toMatch(/^c600010000[0]+$/);
+                    });
+
+                    it( 'fixarray', function () {
+                        expect( b2x( msgpack.pack( [] ) ) ).toBe('90');
+                        expect( b2x( msgpack.pack( [0] ) ) ).toBe('9100');
+                        expect( b2x( msgpack.pack( new Array(15) ) ) ).toBe('9fc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1');
+                    });
+
+                    it( 'array16', function () {
+                        expect( b2x( msgpack.pack( new Array(16) ) ) ).toMatch(/^dc0010(c1)+$/);
+                        expect( b2x( msgpack.pack( new Array(65535) ) ) ).toMatch(/^dcffff(c1)+$/);
+                    });
+
+                    it( 'array32', function () {
+                        expect( b2x( msgpack.pack( new Array(65536) ) ) ).toMatch(/^dd00010000(c1)+$/);
+                    });
+
+                    it( 'fixmap', function () {
+                        expect( b2x( msgpack.pack( {} ) ) ).toBe('80');
+                        expect( b2x( msgpack.pack( { "":0 } ) ) ).toBe('81a000');
+                        expect( b2x( msgpack.pack( { "0":0, "1":1, "2":2, "3":3, "4":4, "5":5, "6":6, "7":7, "8":8, "9":9, "a":10, "b":11, "c":12, "d":13, "e":14 } ) ) )
+                            .toBe('8fa13000a13101a13202a13303a13404a13505a13606a13707a13808a13909a1610aa1620ba1630ca1640da1650e');
+                    });
+
+                    it( 'map16', function () {
+                        expect( b2x( msgpack.pack( { "0":0, "1":1, "2":2, "3":3, "4":4, "5":5, "6":6, "7":7, "8":8, "9":9, "a":10, "b":11, "c":12, "d":13, "e":14, "f":15 } ) ) )
+                            .toBe('de0010a13000a13101a13202a13303a13404a13505a13606a13707a13808a13909a1610aa1620ba1630ca1640da1650ea1660f');
+                        expect( b2x( msgpack.pack( new Array(65535) ) ) ).toMatch(/^dcffff(c1)+$/);
+                    });
+
+                    it( 'map32', function () {
+                        var o = {}; for ( var i = 0; i < 65536; i++ ) o[i] = i;
+                        expect( b2x( msgpack.pack( o ) ) ).toMatch(/^df00010000/);
+                    });
+                });
+            });
+        </script>
+    </body>
+</html>
