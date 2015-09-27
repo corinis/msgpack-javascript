@@ -1,5 +1,5 @@
-[MsgPack](http://msgpack.org/)
-==============================
+[MessagePack](http://msgpack.org/)
+==================================
 
 Space-efficient binary serialization format.
 
