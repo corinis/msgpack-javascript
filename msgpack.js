@@ -71,12 +71,13 @@ function encode(rv,      // @param ByteArray: result
                 sign && (mix *= -1);
 
                 // add offset 1023 to ensure positive
-                // 0.6931471805599453 = Math.LN2;
-                exp  = ((Math.log(mix) / 0.6931471805599453) + 1023) | 0;
+                exp  = ((Math.log(mix) / Math.LN2) + 1023) | 0;
+                if (exp > 2046) exp = 2046;
+                if (exp < 1) exp = 1;
 
                 // shift 52 - (exp - 1023) bits to make integer part exactly 53 bits,
                 // then throw away trash less than decimal point
-                frac = mix * Math.pow(2, 52 + 1023 - exp);
+                frac = mix * Math.pow(2, 1023 - exp) * Math.pow(2, 52);
 
                 //  S+-Exp(11)--++-----------------Fraction(52bits)-----------------------+
                 //  ||          ||                                                        |
@@ -190,6 +191,9 @@ function encode(rv,      // @param ByteArray: result
             if (++depth >= msgpack.MAX_DEPTH) {
                 throw new Error("Maximum recursion depth is reached");
             }
+            if (typeof mix.toJSON === 'function') {
+                mix = mix.toJSON();
+            }
             if (mix instanceof Array) {
                 size = mix.length;
                 if (size < 16) {
@@ -218,9 +222,9 @@ function encode(rv,      // @param ByteArray: result
                 } else if (size < 0x10000) { // 16
                     rv.splice(pos, 1, 0xde, size >> 8, size & 0xff);
                 } else if (size < 0x100000000) { // 32
-                    rv.splice(pos, 1, 0xdf,
-                              size >>> 24, (size >> 16) & 0xff,
-                                           (size >>  8) & 0xff, size & 0xff);
+                    rv.splice(pos, 1, 0xdf, size >>> 24,
+                                           (size >>  16) & 0xff,
+                                           (size >>   8) & 0xff, size & 0xff);
                 }
             }
         }
@@ -230,7 +234,7 @@ function encode(rv,      // @param ByteArray: result
 
 // inner - decoder
 function decode(buf) { // @return Mix:
-    var size, i, iz, c, num = 0, str = '', bs = 16384,
+    var i, iz, c, num = 0, str = '', bs = 16384,
         sign, exp, frac, ary, hash,
         type = buf[++idx];
 
