@@ -1,0 +1,88 @@
+<!doctype html>
+<html>
+    <head>
+        <title>MessagePack benchmark suite</title>
+        <meta charset="UTF-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/benchmark/1.0.0/benchmark.js"></script>
+    </head>
+    <body>
+        <script src="msgpack.js"></script>
+        <script>
+            'use strict';
+            /**
+             * Setup
+             */
+            var obj = {
+                "class" : "Item::Weapon",
+                "name" : "Ручной пулемет Булкина 74",
+                "short_name" : "РПБ-74",
+                "description" : "Версия РПБ под меньший калибр. Повышена кучность и дальность стрельбы.",
+                "level" : 1,
+                "unit_class" : "hvy",
+                "coolness" : 2,
+                "price" : [
+                    {
+                        "money1" : 200
+                    }
+                ],
+                "sell" : 1,
+                "upgrade" : { "money0" : 300 },
+                "base_accuracy" : [
+                    65,
+                    70
+                ],
+                "damage_type" : 3,
+                "damage" : 15,
+                "base_fire_rate" : [
+                    2.83,
+                    2.56
+                ],
+                "burst" : 4,
+                "recoil" : 33,
+                "range" : 5,
+                "move_speed" : -20,
+                "icon" : "lib/graphics/icons/weapons/machinegun1_4.png",
+                "appearance_world": "lib/graphics/gfx/creature/pers_01.swf#machinegun",
+                "appearance_world_anim": "lib/graphics/gfx/creature/machinegun_001.swf",
+                "animations" : {
+                    "shot" : "shot_hvy",
+                    "reload" : "test_reload"
+                }
+            };
+
+            var buf = msgpack.pack(obj);
+
+            var str = JSON.stringify(obj);
+
+            /**
+             * Benchmark
+             */
+
+            (new Benchmark.Suite)
+
+            .add('msgpack.pack', function () {
+                var b = msgpack.pack(obj);
+            })
+
+            .add('msgpack.unpack', function () {
+                var o = msgpack.unpack(buf);
+            })
+/*
+            .add('JSON.stringify', function () {
+                var s = JSON.stringify(obj);
+            })
+
+            .add('JSON.parse', function () {
+                var o = JSON.parse(str);
+            })
+*/
+            .on('complete', function() {
+                document.write( "<p>Fastest is " + this.filter('fastest').pluck('name') + "</p>" );
+                document.write( "<ul>" + this.map( function ( _ ) { return "<li>" + JSON.stringify({ name: _.name, hz: _.hz }) + "</li>" } ) + "</ul>" );
+            })
+
+            .run();
+        </script>
+    </body>
+</html>
