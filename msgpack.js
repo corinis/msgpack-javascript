@@ -13,7 +13,9 @@ var msgpack = {
 };
 globalScope.msgpack = msgpack;
 
-var idx        = 0;  // decode buffer[index]
+var idx = 0,  // decode buffer[index]
+    fb  = new Uint8Array(8),
+    fv  = new DataView(fb.buffer);
 
 // for WebWorkers Code Block
 self.importScripts && (onmessage = function(event) {
@@ -45,9 +47,9 @@ function msgpackunpack(data) { // @param ArrayBuffer:
 function encode(rv,      // @param ByteArray: result
                 mix,     // @param Mix: source data
                 depth) { // @param Number: depth
-    var size, i, iz, c, pos,        // for UTF8.encode, Array.encode, Hash.encode
-        high, low, sign, exp, frac, // for IEEE754
-        bs = 16384;                 // for .push.apply
+    var size, i, iz, c, pos,    // for UTF8.encode, Array.encode, Hash.encode
+        high, low,              // for int64
+        bs = 16384;             // for .push.apply
 
     if (mix === null) { // null -> 0xc0 ( nil )
         rv.push(0xc0);
@@ -65,40 +67,13 @@ function encode(rv,      // @param ByteArray: result
             } else if (!isFinite(mix)) { // ±Infinity
                 rv.push(0xca, mix > 0 ? 0x7f : 0xff, 0x80, 0x00, 0x00);
             } else if (mix % 1 || mix > 0x1fffffffffffff || mix < -0x1fffffffffffff) { // double
-                // THX!! @edvakf
-                // http://javascript.g.hatena.ne.jp/edvakf/20101128/1291000731
-                sign = mix < 0;
-                sign && (mix *= -1);
-
-                // add offset 1023 to ensure positive
-                exp  = ((Math.log(mix) / Math.LN2) + 1023) | 0;
-                if (exp > 2046) exp = 2046;
-                if (exp < 1) exp = 1;
-
-                // shift 52 - (exp - 1023) bits to make integer part exactly 53 bits,
-                // then throw away trash less than decimal point
-                frac = mix * Math.pow(2, 1023 - exp) * Math.pow(2, 52);
-
-                //  S+-Exp(11)--++-----------------Fraction(52bits)-----------------------+
-                //  ||          ||                                                        |
-                //  v+----------++--------------------------------------------------------+
-                //  00000000|00000000|00000000|00000000|00000000|00000000|00000000|00000000
-                //  6      5    55  4        4        3        2        1        8        0
-                //  3      6    21  8        0        2        4        6
-                //
-                //  +----------high(32bits)-----------+ +----------low(32bits)------------+
-                //  |                                 | |                                 |
-                //  +---------------------------------+ +---------------------------------+
-                //  3      2    21  1        8        0
-                //  1      4    09  6
-                low  = frac & 0xffffffff;
-                sign && (exp |= 0x800);
-                high = ((frac / 0x100000000) & 0xfffff) | (exp << 20);
-
-                rv.push(0xcb, (high >> 24) & 0xff, (high >> 16) & 0xff,
-                              (high >>  8) & 0xff,  high        & 0xff,
-                              (low  >> 24) & 0xff, (low  >> 16) & 0xff,
-                              (low  >>  8) & 0xff,  low         & 0xff);
+                fv.setFloat32(0, mix);
+                if (fv.getFloat32(0) === mix) {
+                    rv.push( 0xca, fb[0], fb[1], fb[2], fb[3]);
+                } else {
+                    fv.setFloat64(0, mix);
+                    rv.push( 0xcb, fb[0], fb[1], fb[2], fb[3], fb[4], fb[5], fb[6], fb[7]);
+                }
             } else { // int or uint
                 if (mix >= 0x100000000 || mix < -0x80000000) { // int64
                     high = Math.floor(mix / 0x100000000);
@@ -262,38 +237,21 @@ function decode(buf) { // @return Mix:
     case 0xc2:  return false;
     case 0xc3:  return true;
     case 0xca:  // float
-                num = buf[++idx] * 0x1000000 + (buf[++idx] << 16) +
-                                                (buf[++idx] <<  8) + buf[++idx];
-                sign =  num & 0x80000000;    //  1bit
-                exp  = (num >> 23) & 0xff;   //  8bits
-                frac =  num & 0x7fffff;      // 23bits
-                if (!num || num === 0x80000000) { // 0.0 or -0.0
-                    return 0;
-                }
-                if (exp === 0xff) { // NaN or Infinity
-                    return frac ? NaN : Infinity;
-                }
-                return (sign ? -1 : 1) *
-                            (frac | 0x800000) * Math.pow(2, exp - 127 - 23); // 127: bias
+                fb[0] = buf[++idx],
+                fb[1] = buf[++idx],
+                fb[2] = buf[++idx],
+                fb[3] = buf[++idx];
+                return fv.getFloat32(0);
     case 0xcb:  // double
-                num = buf[++idx] * 0x1000000 + (buf[++idx] << 16) +
-                                                (buf[++idx] <<  8) + buf[++idx];
-                sign =  num & 0x80000000;    //  1bit
-                exp  = (num >> 20) & 0x7ff;  // 11bits
-                frac =  num & 0xfffff;       // 52bits - 32bits (high word)
-                if (!num || num === 0x80000000) { // 0.0 or -0.0
-                    idx += 4;
-                    return 0;
-                }
-                if (exp === 0x7ff) { // NaN or Infinity
-                    idx += 4;
-                    return frac ? NaN : Infinity;
-                }
-                num = buf[++idx] * 0x1000000 + (buf[++idx] << 16) +
-                                                (buf[++idx] <<  8) + buf[++idx];
-                return (sign ? -1 : 1) *
-                            ((frac | 0x100000) * Math.pow(2, exp - 1023 - 20) // 1023: bias
-                             + num * Math.pow(2, exp - 1023 - 52));
+                fb[0] = buf[++idx],
+                fb[1] = buf[++idx],
+                fb[2] = buf[++idx],
+                fb[3] = buf[++idx],
+                fb[4] = buf[++idx],
+                fb[5] = buf[++idx],
+                fb[6] = buf[++idx],
+                fb[7] = buf[++idx];
+                return fv.getFloat64(0);
     // 0xcf: uint64, 0xce: uint32, 0xcd: uint16
     case 0xcf:  num =  buf[++idx] * 0x1000000 + (buf[++idx] << 16) +
                                                  (buf[++idx] <<  8) + buf[++idx];
