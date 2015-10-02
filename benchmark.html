@@ -68,7 +68,7 @@
             .add('msgpack.unpack', function () {
                 var o = msgpack.unpack(buf);
             })
-/*
+
             .add('JSON.stringify', function () {
                 var s = JSON.stringify(obj);
             })
@@ -76,7 +76,7 @@
             .add('JSON.parse', function () {
                 var o = JSON.parse(str);
             })
-*/
+
             .on('complete', function() {
                 document.write( "<p>Fastest is " + this.filter('fastest').pluck('name') + "</p>" );
                 document.write( "<ul>" + this.map( function ( _ ) { return "<li>" + JSON.stringify({ name: _.name, hz: _.hz }) + "</li>" } ) + "</ul>" );

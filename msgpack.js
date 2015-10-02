@@ -21,8 +21,7 @@ var msgpack = {
 
 // for Float/Double encode/decode
 var fb  = new Uint8Array(8),
-    fv  = new DataView(fb.buffer),
-    bs  = 16384;
+    fv  = new DataView(fb.buffer);
 
 // for WebWorkers Code Block
 self.importScripts && (onmessage = function(event) {
@@ -46,7 +45,11 @@ function msgpackpack(data) {     // @param Mix:
 // msgpack.unpack
 function msgpackunpack(data) { // @param ArrayBuffer:
                                // @return Mix:
-    if (data instanceof ArrayBuffer) data = new Uint8Array(data);
+    if (data instanceof ArrayBuffer) {
+        data = new Uint8Array(data);
+    } else if ( !(data instanceof Uint8Array) ) {
+        throw new SyntaxError("ArrayBuffer or Uint8Array expected");
+    }
     return decode( data, { i: -1, d: msgpack.MAX_DEPTH } ); // mix or undefined
 }
 
@@ -164,8 +167,8 @@ function encode(rv,      // @param ByteArray: result
                     rv.push(0xc6, size >>> 24, (size >> 16) & 0xff,
                             (size >>  8) & 0xff, size & 0xff);
                 }
-                for (i = 0; i < size; i += bs) {
-                    rv.push.apply( rv, mix.subarray(i, i+bs < size ? i+bs : size) );
+                for (i = 0; i < size; ++i) {
+                    rv.push(mix[i]);
                 }
                 break;
             }
@@ -324,8 +327,8 @@ function decode(buf,    // @param source buffer
                     }
                 }
                 ctx.i = i;
-                for (str = '', i = 0, iz = ary.length; i < iz; i += bs) {
-                    str += String.fromCharCode.apply( null, ary.slice(i, i+bs < iz ? i+bs : iz) );
+                for (str = '', i = 0, iz = ary.length; i < iz; ++i) {
+                    str += String.fromCharCode(ary[i]);
                 }
                 return str;
     // 0xc6: bin32, 0xc5: bin16, 0xc4: bin8
