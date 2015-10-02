@@ -6,6 +6,13 @@
 this.msgpack || ( function (global) {
 'use strict';
 
+Uint8Array.prototype.slice || ( function () {
+    function slice ( begin, end ) {
+        return new Uint8Array( this.subarray(begin, end) );
+    };
+    Uint8Array.prototype.slice = slice;
+})();
+
 var msgpack = {
     pack:       msgpackpack,    // msgpack.pack(data:Mix):ArrayBuffer
     unpack:     msgpackunpack,  // msgpack.unpack(data:ArrayBuffer):Mix
