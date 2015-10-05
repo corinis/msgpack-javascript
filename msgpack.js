@@ -335,10 +335,10 @@ function decode(buf,    // @param source buffer
     case 0xc6:  num += buf[++ctx.i] * 0x1000000 + (buf[++ctx.i] << 16);
     case 0xc5:  num += buf[++ctx.i] << 8;
     case 0xc4:  num += buf[++ctx.i];
-                var end =  ++ctx.i + num
-                var ret = buf.slice(ctx.i, end);
-                ctx.i += num;
-                return ret.buffer;
+                iz = ctx.i + num;
+                ary = buf.slice(++ctx.i, iz+1);
+                ctx.i = iz;
+                return ary.buffer;
     // 0xdf: map32, 0xde: map16, 0x80: map
     case 0xdf:  num +=  buf[++ctx.i] * 0x1000000 + (buf[++ctx.i] << 16);
     case 0xde:  num += (buf[++ctx.i] << 8)       +  buf[++ctx.i];
