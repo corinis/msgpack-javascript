@@ -2,9 +2,9 @@
 
 // === msgpack ===
 // MessagePack -> http://msgpack.sourceforge.net/
+'use strict';
 
 this.msgpack || ( function (global) {
-'use strict';
 
 Uint8Array.prototype.slice || ( function () {
     function slice ( begin, end ) {
@@ -302,34 +302,31 @@ function decode(buf,    // @param source buffer
     case 0xdb:  num += buf[++ctx.i] * 0x1000000 + (buf[++ctx.i] << 16);
     case 0xda:  num += buf[++ctx.i] << 8;
     case 0xd9:  num += buf[++ctx.i];
-    case 0xa0:  for (ary = [], i = ctx.i, iz = i + num; i < iz; ) { // utf8 decode
+    case 0xa0:  for (str = '', i = ctx.i, iz = i + num; i < iz; ) { // utf8 decode
                     c = buf[++i]; // lead byte
                     if (c < 0x80) { // ASCII
-                        ary.push(c);
+                        str += String.fromCharCode(c);
                     } else if (c >= 0xc0 && c < 0xe0 && i < iz) { // 2-byte sequence
-                        ary.push((c & 0x1f) << 6 | (buf[++i] & 0x3f));
+                        str += String.fromCharCode((c & 0x1f) << 6 | (buf[++i] & 0x3f));
                     } else if (c >= 0xe0 && c < 0xf0 && i+1 < iz) { // 3-byte sequence
-                        ary.push((c & 0xf) << 12 | (buf[++i] & 0x3f) << 6
-                                                 | (buf[++i] & 0x3f));
+                        str += String.fromCharCode((c & 0xf) << 12 | (buf[++i] & 0x3f) << 6
+                                                                   | (buf[++i] & 0x3f));
                     } else if (c >= 0xf0 && c < 0xf8 && i+2 < iz) { // 4-byte sequence
-                        c =        (c & 7) << 18 | (buf[++i] & 0x3f) << 12
-                                                 | (buf[++i] & 0x3f) << 6
-                                                 | (buf[++i] & 0x3f);
+                        c = (c & 7) << 18 | (buf[++i] & 0x3f) << 12
+                                          | (buf[++i] & 0x3f) << 6
+                                          | (buf[++i] & 0x3f);
                         if (c < 0x10000) { // ordinary codepoint
-                            ary.push(c);
+                            str += String.fromCharCode(c);
                         } else { // surrogate pair
                             c ^= 0x10000;
-                            ary.push((c >>>  10) | 0xd800,
-                                     (c & 0x3ff) | 0xdc00);
+                            str += String.fromCharCode((c >>>  10) | 0xd800,
+                                                       (c & 0x3ff) | 0xdc00);
                         }
                     } else {
                         throw new Error("Malformed UTF8 character at position " + i);
                     }
                 }
-                ctx.i = i;
-                for (str = '', i = 0, iz = ary.length; i < iz; ++i) {
-                    str += String.fromCharCode(ary[i]);
-                }
+                ctx.i = iz;
                 return str;
     // 0xc6: bin32, 0xc5: bin16, 0xc4: bin8
     case 0xc6:  num += buf[++ctx.i] * 0x1000000 + (buf[++ctx.i] << 16);
