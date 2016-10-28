@@ -39,7 +39,7 @@ self.importScripts && (onmessage = function(event) {
 // msgpack.pack
 function msgpackpack(data) {     // @param Mix:
                                  // @return ArrayBuffer:
-    return new Uint8Array( encode( [], data, { i: -1, d: msgpack.MAX_DEPTH } ) ).buffer;
+    return new Uint8Array( encode( [], data, { i: -1, d: msgpack.MAX_DEPTH, k: {}, l: 1 } ) ).buffer;
 }
 
 // msgpack.unpack
@@ -50,7 +50,26 @@ function msgpackunpack(data) { // @param ArrayBuffer:
     } else if ( !(data instanceof Uint8Array) ) {
         throw new SyntaxError("ArrayBuffer or Uint8Array expected");
     }
-    return decode( data, { i: -1, d: msgpack.MAX_DEPTH } ); // mix or undefined
+    return decode( data, { i: -1, d: msgpack.MAX_DEPTH, k: {} } ); // mix or undefined
+}
+
+// key encoding: 0xd4+id+string
+// 0xd5+id
+function encodeKey(rv,      // @param ByteArray: result
+                mix,     // @param Mix: source data (string in that case)
+                ctx) {   // @param Object: context
+        var id = ctx.k[mix];
+        if(id) {
+            rv.push(0xd5, id);
+        } else if(ctx.l < 512) {
+            id = ctx.l++;   // next id 
+            ctx.k[mix] = id;    // lookup 
+            rv.push(0xd4, id);  // field + 0 + id
+            encode(rv, mix, ctx);   // name
+        } else {
+            // just encode
+            encode(rv, mix, ctx);   // name
+        }
 }
 
 // inner - encoder
@@ -344,6 +363,12 @@ function decode(buf,    // @param source buffer
                     hash[decode(buf, ctx)] = decode(buf, ctx);
                 }
                 return hash;
+    case 0xd4: num += buf[++ctx.i]; 
+                    str = decode(buf, ctx); 
+                    ctx.k[num] = str; 
+                    return str;
+    case 0xd5: num += buf[++ctx.i]; 
+                   return ctx.k[num];
     // 0xdd: array32, 0xdc: array16, 0x90: array
     case 0xdd:  num +=  buf[++ctx.i] * 0x1000000 + (buf[++ctx.i] << 16);
     case 0xdc:  num += (buf[++ctx.i] << 8)       +  buf[++ctx.i];
